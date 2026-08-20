@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "buffer": "^6.0.3"
+  }
+}
