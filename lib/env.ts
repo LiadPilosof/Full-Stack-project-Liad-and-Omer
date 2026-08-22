@@ -2,6 +2,10 @@
 // purpose. Next.js inlines NEXT_PUBLIC_* values into the browser bundle by
 // literal text substitution at build time, so dynamic access like
 // process.env[name] would silently be undefined in client components.
+//
+// There is deliberately no fallback to an unprefixed SUPABASE_URL: it would
+// satisfy the server and leave the browser client undefined, which fails far
+// away from the cause.
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 

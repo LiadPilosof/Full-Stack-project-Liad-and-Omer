@@ -1,19 +1,19 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Payroll Portal",
+    default: "SMB Payroll & Bookkeeping Portal",
     template: "%s · Payroll Portal",
   },
-  description:
-    "Pay slips, salary insights, documents, and time off for small businesses.",
+  description: "Payroll, payslip, and leave management portal",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }

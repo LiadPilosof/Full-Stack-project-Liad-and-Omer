@@ -13,8 +13,8 @@ export default async function VerifyPage({
   const { email } = await searchParams;
 
   return (
-    <>
-      <h2 className="text-base font-medium text-slate-900">Check your email</h2>
+    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+      <h1 className="text-xl font-bold text-slate-900">Check your email</h1>
       <p className="mt-2 text-sm text-slate-600">
         {email ? (
           <>
@@ -31,10 +31,10 @@ export default async function VerifyPage({
       </p>
       <Link
         href="/login"
-        className="mt-6 inline-block text-sm font-medium text-slate-900 underline underline-offset-4"
+        className="mt-6 inline-block text-sm font-semibold text-indigo-600 underline underline-offset-4 hover:text-indigo-700"
       >
         Use a different address
       </Link>
-    </>
+    </div>
   );
 }
