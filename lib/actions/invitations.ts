@@ -56,27 +56,63 @@ export async function getInvitationDetails(token: string) {
   }
 
   const supabase = await createClient();
+  const cleanToken = token.trim();
 
-  // Query invitation and join company name
-  const { data: invitation, error } = await supabase
-    .from("invitations")
-    .select(`
-      id,
-      token,
-      role,
-      email,
-      expires_at,
-      used_at,
-      companies (
+  // 1. Try RPC resolver (Security Definer, works for anonymous/incognito guests)
+  const { data: rpcData, error: rpcError } = await supabase
+    .rpc("get_invitation_by_token", { p_token: cleanToken });
+
+  let invitation: any = null;
+  if (!rpcError && rpcData && rpcData.length > 0) {
+    const row = rpcData[0];
+    invitation = {
+      id: row.id,
+      token: row.token,
+      role: row.role,
+      email: row.email,
+      expires_at: row.expires_at,
+      used_at: row.used_at,
+      companyName: row.company_name,
+      companyTaxId: row.company_tax_id,
+    };
+  } else {
+    // 2. Fallback to direct query
+    const { data: directData } = await supabase
+      .from("invitations")
+      .select(`
         id,
-        name,
-        tax_id
-      )
-    `)
-    .eq("token", token.trim())
-    .single();
+        token,
+        role,
+        email,
+        expires_at,
+        used_at,
+        companies (
+          id,
+          name,
+          tax_id
+        )
+      `)
+      .eq("token", cleanToken)
+      .maybeSingle();
 
-  if (error || !invitation) {
+    if (directData) {
+      const company = Array.isArray(directData.companies)
+        ? directData.companies[0]
+        : directData.companies;
+      invitation = {
+        id: directData.id,
+        token: directData.token,
+        role: directData.role,
+        email: directData.email,
+        expires_at: directData.expires_at,
+        used_at: directData.used_at,
+        companyName: company?.name || "Company",
+        companyTaxId: company?.tax_id || "",
+      };
+    }
+  }
+
+  if (!invitation) {
     return { ok: false, error: "Invitation not found or has been removed." };
   }
 
@@ -91,18 +127,14 @@ export async function getInvitationDetails(token: string) {
     };
   }
 
-  const company = Array.isArray(invitation.companies)
-    ? invitation.companies[0]
-    : invitation.companies;
-
   return {
     ok: true,
     data: {
       token: invitation.token,
       role: invitation.role as "employee" | "manager",
       email: invitation.email,
-      companyName: company?.name || "Company",
-      companyTaxId: company?.tax_id || "",
+      companyName: invitation.companyName || "Company",
+      companyTaxId: invitation.companyTaxId || "",
     },
   };
 }

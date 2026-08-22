@@ -597,6 +597,39 @@ end $$;
 
 grant execute on function public.publish_payroll_period(uuid) to authenticated;
 
+-- Public Invitation Resolver RPC (Allows anyone with a valid token to fetch business name and role)
+create or replace function public.get_invitation_by_token(p_token text)
+returns table (
+  id uuid,
+  token text,
+  role app_role,
+  email citext,
+  expires_at timestamptz,
+  used_at timestamptz,
+  company_id uuid,
+  company_name text,
+  company_tax_id text
+)
+language sql stable security definer set search_path = public, pg_temp
+as $$
+  select
+    i.id,
+    i.token,
+    i.role,
+    i.email,
+    i.expires_at,
+    i.used_at,
+    c.id as company_id,
+    c.name as company_name,
+    c.tax_id as company_tax_id
+  from public.invitations i
+  join public.companies c on c.id = i.company_id
+  where i.token = p_token
+  limit 1;
+$$;
+
+grant execute on function public.get_invitation_by_token(text) to anon, authenticated;
+
 -- 7. AUTH SIGNUP & INVITATION TRIGGER
 create or replace function public.handle_new_user()
 returns trigger
@@ -750,6 +783,15 @@ create policy "companies_select_accessible" on public.companies for select to au
     app.has_role(id, array['employee','manager']::app_role[])
   );
 
+drop policy if exists "companies_select_invited" on public.companies;
+create policy "companies_select_invited" on public.companies for select to anon, authenticated
+  using (exists (
+    select 1 from public.invitations i
+    where i.company_id = companies.id
+      and i.used_at is null
+      and i.expires_at > now()
+  ));
+
 drop policy if exists "companies_write_bookkeeper" on public.companies;
 create policy "companies_write_bookkeeper" on public.companies for all to authenticated
   using (app.is_firm_bookkeeper(firm_id))
@@ -776,6 +818,11 @@ drop policy if exists "invitations_select_bookkeeper" on public.invitations;
 create policy "invitations_select_bookkeeper" on public.invitations
   for select to authenticated
   using (app.has_role(company_id, array['bookkeeper']::app_role[]));
+
+drop policy if exists "invitations_select_active_token" on public.invitations;
+create policy "invitations_select_active_token" on public.invitations
+  for select to anon, authenticated
+  using (used_at is null and expires_at > now());
 
 drop policy if exists "invitations_write_bookkeeper" on public.invitations;
 create policy "invitations_write_bookkeeper" on public.invitations

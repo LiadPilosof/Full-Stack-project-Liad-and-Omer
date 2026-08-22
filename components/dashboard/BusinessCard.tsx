@@ -44,7 +44,7 @@ export function BusinessCard({ business, onInvite }: BusinessCardProps) {
           </div>
           <div>
             <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">
-              Invitations
+              Pending Invites
             </div>
             <div className="text-xl font-extrabold text-slate-900 mt-0.5">
               {business.invitationCount}

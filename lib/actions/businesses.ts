@@ -184,7 +184,13 @@ export async function listFirmBusinesses() {
     return { ok: false, error: "Unauthorized", data: [] };
   }
 
-  // RLS will automatically return companies belonging to the user's firm
+  // Resolve current firm ID
+  const resolved = await resolveUserFirm(supabase, user);
+  if (!resolved?.firmId) {
+    return { ok: true, data: [] };
+  }
+
+  // Strictly filter businesses by this firm's ID
   const { data: companies, error } = await supabase
     .from("companies")
     .select(`
@@ -195,24 +201,33 @@ export async function listFirmBusinesses() {
       currency,
       created_at,
       employees (count),
-      invitations (count)
+      invitations (id, used_at, expires_at)
     `)
+    .eq("firm_id", resolved.firmId)
     .order("created_at", { ascending: false });
 
   if (error) {
     return { ok: false, error: error.message, data: [] };
   }
 
-  const formatted = (companies || []).map((c: any) => ({
-    id: c.id,
-    name: c.name,
-    taxId: c.tax_id,
-    timezone: c.timezone,
-    currency: c.currency,
-    createdAt: c.created_at,
-    employeeCount: c.employees?.[0]?.count || 0,
-    invitationCount: c.invitations?.[0]?.count || 0,
-  }));
+  const now = new Date();
+  const formatted = (companies || []).map((c: any) => {
+    // Count only pending invitations (not yet accepted and not expired)
+    const pendingInvitesCount = (c.invitations || []).filter(
+      (inv: any) => !inv.used_at && new Date(inv.expires_at) > now
+    ).length;
+
+    return {
+      id: c.id,
+      name: c.name,
+      taxId: c.tax_id,
+      timezone: c.timezone,
+      currency: c.currency,
+      createdAt: c.created_at,
+      employeeCount: c.employees?.[0]?.count || 0,
+      invitationCount: pendingInvitesCount,
+    };
+  });
 
   return { ok: true, data: formatted };
 }
