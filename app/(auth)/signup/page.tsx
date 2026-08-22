@@ -2,64 +2,50 @@ import Link from "next/link";
 
 export default function SignupHubPage() {
   return (
-    <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-2xl p-6 sm:p-10 shadow-sm">
+    <div className="w-full max-w-xl bg-white border border-slate-200 rounded-2xl p-8 sm:p-10 shadow-sm text-left">
       <div className="text-center mb-8">
+        <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-3xl mx-auto mb-3">
+          🏢
+        </div>
         <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-2">
-          Create an Account
+          Company Registration
         </h1>
-        <p className="text-slate-600 text-sm sm:text-base">
-          Choose the account type that best matches your role to get started
+        <p className="text-slate-600 text-sm">
+          Register your booking or bookkeeping company account to manage businesses and employee payroll.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        {/* Bookkeeper Card */}
-        <Link
-          href="/signup/bookkeeper"
-          className="group relative flex flex-col justify-between p-6 border-2 border-slate-200 hover:border-indigo-600 rounded-xl bg-white hover:bg-indigo-50/30 transition shadow-sm hover:shadow-md text-left"
-        >
-          <div>
-            <div className="w-12 h-12 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white transition">
-              📊
-            </div>
-            <h2 className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 mb-2">
-              Bookkeeping / Business
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
-              For external bookkeepers, payroll accountants, and business owners managing company pay slips, leave balances, and employee documents.
-            </p>
-          </div>
-          <div className="flex items-center text-sm font-semibold text-indigo-600 gap-1 mt-2">
-            <span>Register as Bookkeeper</span>
-            <span className="text-lg">→</span>
-          </div>
-        </Link>
+      <div className="space-y-4">
+        {/* Company Registration Card */}
+        <div className="p-6 border-2 border-indigo-600 bg-indigo-50/40 rounded-xl">
+          <h2 className="text-lg font-bold text-slate-900 mb-1">
+            New Company Account
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
+            For booking firms, bookkeeping agencies, and business administrators to set up an account, add client businesses, and generate employee/manager invite links.
+          </p>
+          <Link
+            href="/signup/bookkeeper"
+            className="inline-flex items-center justify-center w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-sm transition shadow-sm"
+          >
+            Register Company Account →
+          </Link>
+        </div>
 
-        {/* Worker / Manager Card */}
-        <Link
-          href="/signup/worker"
-          className="group relative flex flex-col justify-between p-6 border-2 border-slate-200 hover:border-emerald-600 rounded-xl bg-white hover:bg-emerald-50/30 transition shadow-sm hover:shadow-md text-left"
-        >
-          <div>
-            <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 group-hover:bg-emerald-600 group-hover:text-white transition">
-              👤
+        {/* Worker Notice */}
+        <div className="p-5 border border-slate-200 bg-slate-50/60 rounded-xl">
+          <div className="flex items-start gap-3">
+            <span className="text-xl">✉️</span>
+            <div>
+              <h3 className="text-sm font-bold text-slate-800 mb-1">
+                Are you an Employee or Team Manager?
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Worker and manager accounts cannot be created publicly. You must use the <strong>invitation link</strong> provided by your company administrator to join.
+              </p>
             </div>
-            <h2 className="text-lg font-bold text-slate-900 group-hover:text-emerald-600 mb-2">
-              Worker / Team Manager
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
-              For workers and team managers wanting to view pay slips, track leave balances, and submit or approve time-off requests.
-            </p>
           </div>
-          <div className="flex items-center text-sm font-semibold text-emerald-600 gap-1 mt-2">
-            <span>Register as Worker / Manager</span>
-            <span className="text-lg">→</span>
-          </div>
-        </Link>
-      </div>
-
-      <div className="mt-8 pt-6 border-t border-slate-100 text-center text-xs text-slate-500">
-        Secure authentication powered by Supabase. Your role and permissions are safely managed.
+        </div>
       </div>
     </div>
   );

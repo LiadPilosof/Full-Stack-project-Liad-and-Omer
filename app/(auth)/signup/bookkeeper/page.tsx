@@ -8,15 +8,15 @@ import {
   type BookkeeperSignupInput,
 } from "@/lib/validations/auth";
 
-export default function BookkeeperSignupPage() {
+export default function CompanySignupPage() {
   const [formData, setFormData] = useState<BookkeeperSignupInput>({
+    firmName: "",
+    taxId: "",
     fullName: "",
     email: "",
     password: "",
     confirmPassword: "",
     phone: "",
-    companyName: "",
-    taxId: "",
     terms: false,
   });
 
@@ -35,7 +35,6 @@ export default function BookkeeperSignupPage() {
       ...prev,
       [name]: type === "checkbox" ? checked : value,
     }));
-    // Clear error for field when user types
     if (fieldErrors[name]) {
       setFieldErrors((prev) => {
         const next = { ...prev };
@@ -50,7 +49,6 @@ export default function BookkeeperSignupPage() {
     setGeneralError(null);
     setFieldErrors({});
 
-    // Validate with Zod
     const validationResult = bookkeeperSignupSchema.safeParse(formData);
     if (!validationResult.success) {
       const formattedErrors: Record<string, string> = {};
@@ -72,12 +70,11 @@ export default function BookkeeperSignupPage() {
         password: formData.password,
         options: {
           data: {
+            firm_name: formData.firmName.trim(),
+            tax_id: formData.taxId.trim(),
             full_name: formData.fullName.trim(),
             phone: formData.phone?.trim() || null,
-            company_name: formData.companyName.trim(),
-            tax_id: formData.taxId.trim(),
             signup_type: "bookkeeper",
-            role: "bookkeeper",
           },
         },
       });
@@ -85,17 +82,19 @@ export default function BookkeeperSignupPage() {
       if (error) {
         setGeneralError(
           error.message === "User already registered"
-            ? "A user with this email address is already registered."
+            ? "A company account with this email address is already registered."
             : `Registration error: ${error.message}`,
         );
         return;
       }
 
       if (data?.user) {
-        setIsSuccess(true);
+        // Direct navigation to the dashboard to create businesses
+        window.location.href = "/dashboard";
+        return;
       }
     } catch (err: unknown) {
-      setGeneralError("An unexpected error occurred during signup. Please try again.");
+      setGeneralError("An unexpected error occurred during company registration. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -103,25 +102,25 @@ export default function BookkeeperSignupPage() {
 
   if (isSuccess) {
     return (
-      <div className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl p-6 sm:p-10 shadow-sm text-center">
+      <div className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl p-8 sm:p-10 shadow-sm text-center">
         <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">
           ✓
         </div>
         <h2 className="text-2xl font-bold text-slate-900 mb-2">
-          Account Created Successfully!
+          Company Account Created!
         </h2>
         <p className="text-slate-600 text-sm sm:text-base mb-6 leading-relaxed">
-          We have registered your Bookkeeper account and company{" "}
-          <strong className="text-slate-800">{formData.companyName}</strong> (Tax ID:{" "}
+          We have registered the company account for{" "}
+          <strong className="text-slate-800">{formData.firmName}</strong> (Tax ID:{" "}
           {formData.taxId}).
           <br className="my-2" />
-          A confirmation link has been sent to{" "}
-          <span className="font-semibold text-slate-900">{formData.email}</span>. Please verify your email to continue.
+          A verification link has been sent to{" "}
+          <span className="font-semibold text-slate-900">{formData.email}</span>. Once verified, you can log in, create businesses, and generate employee/manager invitation links.
         </p>
         <div className="flex justify-center">
           <Link
             href="/"
-            className="inline-flex justify-center items-center px-6 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition"
+            className="inline-flex justify-center items-center px-6 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition text-sm"
           >
             Return to Home
           </Link>
@@ -133,18 +132,16 @@ export default function BookkeeperSignupPage() {
   return (
     <div className="w-full max-w-xl bg-white border border-slate-200 rounded-2xl p-6 sm:p-10 shadow-sm text-left">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
-        <div>
-          <span className="inline-block px-2.5 py-1 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-700 mb-2">
-            Bookkeeping / Business
-          </span>
-          <h1 className="text-2xl font-extrabold text-slate-900">
-            Bookkeeper Registration
-          </h1>
-        </div>
-        <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl">
-          📊
-        </div>
+      <div className="border-b border-slate-100 pb-4 mb-6">
+        <span className="inline-block px-2.5 py-1 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-700 mb-2">
+          Company Account
+        </span>
+        <h1 className="text-2xl font-extrabold text-slate-900">
+          Register Company Account
+        </h1>
+        <p className="text-xs sm:text-sm text-slate-500 mt-1">
+          Set up your booking / bookkeeping company account to manage client businesses and employee payroll.
+        </p>
       </div>
 
       {generalError && (
@@ -154,11 +151,76 @@ export default function BookkeeperSignupPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-        {/* Contact Details Section */}
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        {/* Company Details Section */}
         <div className="space-y-4">
-          <h2 className="text-sm font-bold text-slate-700 border-b border-slate-100 pb-1">
-            Personal & Contact Details
+          <h2 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+            <span>🏢</span>
+            <span>Company Information</span>
+          </h2>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label
+                htmlFor="firmName"
+                className="block text-xs font-semibold text-slate-700 mb-1"
+              >
+                Company / Firm Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="firmName"
+                name="firmName"
+                type="text"
+                required
+                value={formData.firmName}
+                onChange={handleChange}
+                placeholder="e.g. Apex Booking & Payroll Ltd"
+                className={`w-full px-3.5 py-2 text-sm rounded-lg border ${
+                  fieldErrors.firmName
+                    ? "border-red-400 focus:ring-red-200"
+                    : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-100"
+                } focus:outline-none focus:ring-2 transition`}
+              />
+              {fieldErrors.firmName && (
+                <p className="text-xs text-red-600 mt-1">
+                  {fieldErrors.firmName}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label
+                htmlFor="taxId"
+                className="block text-xs font-semibold text-slate-700 mb-1"
+              >
+                Company Tax ID / Business # <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="taxId"
+                name="taxId"
+                type="text"
+                required
+                value={formData.taxId}
+                onChange={handleChange}
+                placeholder="e.g. 514321987"
+                className={`w-full px-3.5 py-2 text-sm rounded-lg border ${
+                  fieldErrors.taxId
+                    ? "border-red-400 focus:ring-red-200"
+                    : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-100"
+                } focus:outline-none focus:ring-2 transition`}
+              />
+              {fieldErrors.taxId && (
+                <p className="text-xs text-red-600 mt-1">{fieldErrors.taxId}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Account Administrator Section */}
+        <div className="space-y-4 pt-1">
+          <h2 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+            <span>👤</span>
+            <span>Account Administrator / Contact Person</span>
           </h2>
 
           <div>
@@ -166,7 +228,7 @@ export default function BookkeeperSignupPage() {
               htmlFor="fullName"
               className="block text-xs font-semibold text-slate-700 mb-1"
             >
-              Full Name <span className="text-red-500">*</span>
+              Administrator Full Name <span className="text-red-500">*</span>
             </label>
             <input
               id="fullName"
@@ -193,7 +255,7 @@ export default function BookkeeperSignupPage() {
                 htmlFor="email"
                 className="block text-xs font-semibold text-slate-700 mb-1"
               >
-                Email Address <span className="text-red-500">*</span>
+                Company Email Address <span className="text-red-500">*</span>
               </label>
               <input
                 id="email"
@@ -202,7 +264,7 @@ export default function BookkeeperSignupPage() {
                 required
                 value={formData.email}
                 onChange={handleChange}
-                placeholder="jane@company.com"
+                placeholder="admin@company.com"
                 className={`w-full px-3.5 py-2 text-sm rounded-lg border ${
                   fieldErrors.email
                     ? "border-red-400 focus:ring-red-200"
@@ -299,69 +361,6 @@ export default function BookkeeperSignupPage() {
           </div>
         </div>
 
-        {/* Company Details Section */}
-        <div className="space-y-4 pt-2">
-          <h2 className="text-sm font-bold text-slate-700 border-b border-slate-100 pb-1">
-            Company & Business Details
-          </h2>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label
-                htmlFor="companyName"
-                className="block text-xs font-semibold text-slate-700 mb-1"
-              >
-                Company / Practice Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="companyName"
-                name="companyName"
-                type="text"
-                required
-                value={formData.companyName}
-                onChange={handleChange}
-                placeholder="e.g. Acme Corp Ltd."
-                className={`w-full px-3.5 py-2 text-sm rounded-lg border ${
-                  fieldErrors.companyName
-                    ? "border-red-400 focus:ring-red-200"
-                    : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-100"
-                } focus:outline-none focus:ring-2 transition`}
-              />
-              {fieldErrors.companyName && (
-                <p className="text-xs text-red-600 mt-1">
-                  {fieldErrors.companyName}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label
-                htmlFor="taxId"
-                className="block text-xs font-semibold text-slate-700 mb-1"
-              >
-                Tax ID / Business Number <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="taxId"
-                name="taxId"
-                type="text"
-                required
-                value={formData.taxId}
-                onChange={handleChange}
-                placeholder="e.g. 512345678"
-                className={`w-full px-3.5 py-2 text-sm rounded-lg border ${
-                  fieldErrors.taxId
-                    ? "border-red-400 focus:ring-red-200"
-                    : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-100"
-                } focus:outline-none focus:ring-2 transition`}
-              />
-              {fieldErrors.taxId && (
-                <p className="text-xs text-red-600 mt-1">{fieldErrors.taxId}</p>
-              )}
-            </div>
-          </div>
-        </div>
-
         {/* Terms */}
         <div className="pt-2">
           <label className="flex items-start gap-2 cursor-pointer">
@@ -382,55 +381,20 @@ export default function BookkeeperSignupPage() {
         </div>
 
         {/* Submit Button */}
-        <div className="pt-4">
+        <div className="pt-2">
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold rounded-xl shadow-sm hover:shadow transition flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+            className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold rounded-xl shadow-sm hover:shadow transition flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed text-sm"
           >
             {isSubmitting ? (
-              <>
-                <svg
-                  className="animate-spin h-5 w-5 text-white"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                <span>Creating Bookkeeper Account...</span>
-              </>
+              <span>Registering Company Account...</span>
             ) : (
-              <span>Create Bookkeeper Account</span>
+              <span>Create Company Account</span>
             )}
           </button>
         </div>
       </form>
-
-      {/* Switcher link */}
-      <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
-        <div>
-          Signing up as an employee or manager?{" "}
-          <Link
-            href="/signup/worker"
-            className="text-emerald-600 font-bold hover:underline"
-          >
-            Switch to Worker Signup
-          </Link>
-        </div>
-      </div>
     </div>
   );
 }
