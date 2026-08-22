@@ -1,5 +1,5 @@
 -- ============================================================================
--- SMB Payroll & Bookkeeping Portal - Complete Initial Database Schema
+-- SMB Payroll & Multi-Business Bookkeeping Portal - Initial Database Schema
 -- Run this script in the Supabase SQL Editor (Dashboard -> SQL Editor -> New Query)
 -- ============================================================================
 
@@ -24,7 +24,7 @@ do $$ begin
 exception when duplicate_object then null;
 end $$;
 
--- 3. CORE TABLES (Created first so helper functions and policies can reference them)
+-- 3. CORE HIERARCHY TABLES
 
 -- Profiles table (one per login, 1:1 with auth.users)
 create table if not exists public.profiles (
@@ -36,20 +36,53 @@ create table if not exists public.profiles (
   created_at  timestamptz not null default now()
 );
 
--- Companies table (the tenant)
+-- Bookkeeping Firms (Parent Account / Agency that manages client businesses)
+create table if not exists public.bookkeeping_firms (
+  id          uuid primary key default gen_random_uuid(),
+  name        text not null check (length(btrim(name)) >= 2),
+  tax_id      text not null unique,               -- Firm Tax ID / Registration #
+  created_at  timestamptz not null default now()
+);
+
+-- Firm Memberships (Associates bookkeeper logins with their firm)
+create table if not exists public.firm_memberships (
+  id          uuid primary key default gen_random_uuid(),
+  firm_id     uuid not null references public.bookkeeping_firms(id) on delete cascade,
+  profile_id  uuid not null references public.profiles(id) on delete cascade,
+  role        text not null default 'bookkeeper',
+  is_active   boolean not null default true,
+  created_at  timestamptz not null default now(),
+  unique (firm_id, profile_id)
+);
+create index if not exists idx_firm_memberships_profile on public.firm_memberships(profile_id) where is_active;
+create index if not exists idx_firm_memberships_firm on public.firm_memberships(firm_id) where is_active;
+
+-- Companies (Client Businesses created and managed under a Bookkeeping Firm)
 create table if not exists public.companies (
-  id        uuid primary key default gen_random_uuid(),
-  name      text not null check (length(btrim(name)) >= 2),
-  tax_id    text not null unique,                 -- Tax ID / Company Registration #
-  timezone  text not null default 'Asia/Jerusalem',
-  currency  char(3) not null default 'ILS',
+  id          uuid primary key default gen_random_uuid(),
+  firm_id     uuid references public.bookkeeping_firms(id) on delete cascade,
+  name        text not null check (length(btrim(name)) >= 2),
+  tax_id      text not null,                      -- Business Tax ID
+  timezone    text not null default 'Asia/Jerusalem',
+  currency    char(3) not null default 'ILS',
   week_start_day smallint not null default 0 check (week_start_day between 0 and 6),
   weekend_days   smallint[] not null default '{5,6}',  -- Fri, Sat
   managers_can_view_payslip_files boolean not null default false,
-  created_at timestamptz not null default now()
+  created_at  timestamptz not null default now()
 );
 
--- Memberships table (authorization links)
+-- Ensure firm_id column exists on companies if table was created in an earlier run
+do $$ begin
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'companies') then
+    if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'companies' and column_name = 'firm_id') then
+      alter table public.companies add column firm_id uuid references public.bookkeeping_firms(id) on delete cascade;
+    end if;
+  end if;
+end $$;
+
+create index if not exists idx_companies_firm on public.companies(firm_id);
+
+-- Memberships table (Authorization links for employees and managers in a specific business)
 create table if not exists public.memberships (
   id          uuid primary key default gen_random_uuid(),
   company_id  uuid not null references public.companies(id) on delete cascade,
@@ -60,10 +93,36 @@ create table if not exists public.memberships (
   created_at  timestamptz not null default now(),
   unique (company_id, profile_id)
 );
+
+-- Ensure invited_by column exists on memberships if table was created in an earlier run
+do $$ begin
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'memberships') then
+    if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'memberships' and column_name = 'invited_by') then
+      alter table public.memberships add column invited_by uuid references public.profiles(id);
+    end if;
+  end if;
+end $$;
+
 create index if not exists idx_memberships_profile_active on public.memberships (profile_id) where is_active;
 create index if not exists idx_memberships_company_role on public.memberships (company_id, role) where is_active;
 
--- Employees table (HR record)
+-- Role-Based Invitations (For inviting regular employees or managers to a specific business)
+create table if not exists public.invitations (
+  id          uuid primary key default gen_random_uuid(),
+  company_id  uuid not null references public.companies(id) on delete cascade,
+  role        app_role not null check (role in ('employee', 'manager')),
+  token       text not null unique default encode(gen_random_bytes(24), 'hex'),
+  email       citext,                             -- Optional target email restriction
+  created_by  uuid references public.profiles(id),
+  expires_at  timestamptz not null default (now() + interval '7 days'),
+  used_at     timestamptz,
+  used_by     uuid references public.profiles(id),
+  created_at  timestamptz not null default now()
+);
+create index if not exists idx_invitations_token on public.invitations(token);
+create index if not exists idx_invitations_company on public.invitations(company_id);
+
+-- Employees table (HR record in a specific business)
 create table if not exists public.employees (
   id              uuid primary key default gen_random_uuid(),
   company_id      uuid not null references public.companies(id) on delete cascade,
@@ -215,13 +274,14 @@ create table if not exists public.time_off_requests (
 
 -- Prevent overlapping active leave requests with GiST exclusion constraint
 do $$ begin
-  alter table public.time_off_requests
-    add constraint no_overlapping_active_leave
-    exclude using gist (
-      employee_id with =,
-      daterange(start_date, end_date, '[]') with &&
-    ) where (status in ('pending', 'approved'));
-exception when duplicate_object then null;
+  if not exists (select 1 from pg_constraint where conname = 'no_overlapping_active_leave') then
+    alter table public.time_off_requests
+      add constraint no_overlapping_active_leave
+      exclude using gist (
+        employee_id with =,
+        daterange(start_date, end_date, '[]') with &&
+      ) where (status in ('pending', 'approved'));
+  end if;
 end $$;
 
 create index if not exists idx_time_off_employee_status on public.time_off_requests (employee_id, status);
@@ -271,17 +331,50 @@ create index if not exists idx_audit_log_entity on public.audit_log (entity, ent
 create schema if not exists app;
 grant usage on schema app to authenticated;
 
--- Helper: Check if current user has one of the specified roles in a company
-create or replace function app.has_role(p_company uuid, p_roles app_role[])
+-- Helper: Check if current user is an active bookkeeper in a bookkeeping firm
+create or replace function app.is_firm_bookkeeper(p_firm_id uuid)
 returns boolean
 language sql stable security definer set search_path = public, pg_temp
 as $$
   select exists (
-    select 1 from public.memberships m
-    where m.profile_id = (select auth.uid())
-      and m.company_id = p_company
-      and m.is_active
-      and m.role = any(p_roles)
+    select 1 from public.firm_memberships fm
+    where fm.profile_id = (select auth.uid())
+      and fm.firm_id = p_firm_id
+      and fm.is_active
+  );
+$$;
+
+-- Helper: Check if current user is a bookkeeper of the firm that manages a specific business
+create or replace function app.is_company_bookkeeper(p_company_id uuid)
+returns boolean
+language sql stable security definer set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1 from public.companies c
+    join public.firm_memberships fm on fm.firm_id = c.firm_id
+    where c.id = p_company_id
+      and fm.profile_id = (select auth.uid())
+      and fm.is_active
+  );
+$$;
+
+-- Helper: Check if current user has one of the specified roles in a business (or is its firm bookkeeper)
+create or replace function app.has_role(p_company uuid, p_roles app_role[])
+returns boolean
+language sql stable security definer set search_path = public, pg_temp
+as $$
+  select (
+    -- Direct business membership (employee or manager)
+    exists (
+      select 1 from public.memberships m
+      where m.profile_id = (select auth.uid())
+        and m.company_id = p_company
+        and m.is_active
+        and m.role = any(p_roles)
+    )
+    or
+    -- Bookkeeper of the managing firm
+    ('bookkeeper' = any(p_roles) and app.is_company_bookkeeper(p_company))
   );
 $$;
 
@@ -504,7 +597,40 @@ end $$;
 
 grant execute on function public.publish_payroll_period(uuid) to authenticated;
 
--- 7. AUTH SIGNUP TRIGGER (Handles new users automatically from signup forms)
+-- Public Invitation Resolver RPC (Allows anyone with a valid token to fetch business name and role)
+create or replace function public.get_invitation_by_token(p_token text)
+returns table (
+  id uuid,
+  token text,
+  role app_role,
+  email citext,
+  expires_at timestamptz,
+  used_at timestamptz,
+  company_id uuid,
+  company_name text,
+  company_tax_id text
+)
+language sql stable security definer set search_path = public, pg_temp
+as $$
+  select
+    i.id,
+    i.token,
+    i.role,
+    i.email,
+    i.expires_at,
+    i.used_at,
+    c.id as company_id,
+    c.name as company_name,
+    c.tax_id as company_tax_id
+  from public.invitations i
+  join public.companies c on c.id = i.company_id
+  where i.token = p_token
+  limit 1;
+$$;
+
+grant execute on function public.get_invitation_by_token(text) to anon, authenticated;
+
+-- 7. AUTH SIGNUP & INVITATION TRIGGER
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -515,11 +641,11 @@ declare
   v_full_name text;
   v_phone text;
   v_signup_type text;
-  v_role_text text;
-  v_target_role app_role;
-  v_company_name text;
+  v_firm_name text;
   v_tax_id text;
-  v_company_id uuid;
+  v_firm_id uuid;
+  v_invitation_token text;
+  v_invitation record;
   v_membership_id uuid;
   v_employee_num text;
 begin
@@ -529,9 +655,9 @@ begin
   end if;
   v_phone := new.raw_user_meta_data->>'phone';
   v_signup_type := coalesce(new.raw_user_meta_data->>'signup_type', 'worker');
-  v_role_text := coalesce(new.raw_user_meta_data->>'role', 'employee');
-  v_company_name := new.raw_user_meta_data->>'company_name';
-  v_tax_id := coalesce(new.raw_user_meta_data->>'tax_id', new.raw_user_meta_data->>'company_tax_id');
+  v_firm_name := new.raw_user_meta_data->>'firm_name';
+  v_tax_id := new.raw_user_meta_data->>'tax_id';
+  v_invitation_token := new.raw_user_meta_data->>'invitation_token';
 
   -- 1. Create or update profile
   insert into public.profiles (id, full_name, email, phone, locale)
@@ -540,54 +666,55 @@ begin
   set full_name = excluded.full_name,
       phone = coalesce(excluded.phone, profiles.phone);
 
-  -- 2. If Bookkeeper signup: create company and link membership
+  -- 2. CASE A: Bookkeeping Firm Registration
   if v_signup_type = 'bookkeeper' and v_tax_id is not null and length(btrim(v_tax_id)) > 0 then
-    v_company_name := coalesce(v_company_name, 'My Company');
+    v_firm_name := coalesce(v_firm_name, 'My Bookkeeping Firm');
     
-    insert into public.companies (name, tax_id)
-    values (v_company_name, v_tax_id)
+    insert into public.bookkeeping_firms (name, tax_id)
+    values (v_firm_name, v_tax_id)
     on conflict (tax_id) do update set name = excluded.name
-    returning id into v_company_id;
+    returning id into v_firm_id;
 
-    insert into public.memberships (company_id, profile_id, role, is_active)
-    values (v_company_id, new.id, 'bookkeeper'::app_role, true)
-    on conflict (company_id, profile_id) do update set role = 'bookkeeper'::app_role, is_active = true;
+    insert into public.firm_memberships (firm_id, profile_id, role, is_active)
+    values (v_firm_id, new.id, 'bookkeeper', true)
+    on conflict (firm_id, profile_id) do update set is_active = true;
 
-    -- Create default leave types for the company if none exist
-    insert into public.leave_types (company_id, code, name, accrual_days_per_month, is_paid)
-    values
-      (v_company_id, 'vacation', 'Annual Vacation', 1.00, true),
-      (v_company_id, 'sick', 'Sick Leave', 1.50, true),
-      (v_company_id, 'reserve_duty', 'Reserve Duty', 0, true)
-    on conflict (company_id, code) do nothing;
+  -- 3. CASE B: Worker / Manager Registration via Invitation Link
+  elsif v_invitation_token is not null and length(btrim(v_invitation_token)) > 0 then
+    -- Find and lock active invitation
+    select * into v_invitation
+    from public.invitations
+    where token = v_invitation_token
+      and used_at is null
+      and expires_at > now()
+    for update;
 
-  -- 3. If Worker / Manager signup:
-  elsif v_signup_type = 'worker' then
-    if v_role_text = 'manager' then
-      v_target_role := 'manager'::app_role;
-    else
-      v_target_role := 'employee'::app_role;
-    end if;
-
-    -- Try to find company by tax_id or name
-    if v_tax_id is not null and length(btrim(v_tax_id)) > 0 then
-      select id into v_company_id from public.companies where tax_id = v_tax_id limit 1;
-    elsif v_company_name is not null and length(btrim(v_company_name)) > 0 then
-      select id into v_company_id from public.companies where name ilike v_company_name limit 1;
-    end if;
-
-    -- If company exists, create membership and link employee record
-    if v_company_id is not null then
-      insert into public.memberships (company_id, profile_id, role, is_active)
-      values (v_company_id, new.id, v_target_role, true)
-      on conflict (company_id, profile_id) do update set role = v_target_role, is_active = true
+    if found then
+      -- Link membership with the pre-assigned role from the invitation
+      insert into public.memberships (company_id, profile_id, role, is_active, invited_by)
+      values (v_invitation.company_id, new.id, v_invitation.role, true, v_invitation.created_by)
+      on conflict (company_id, profile_id) do update set role = v_invitation.role, is_active = true
       returning id into v_membership_id;
 
-      -- Check if employee record already exists with matching name/email
+      -- Create/link employee record
       v_employee_num := coalesce(new.raw_user_meta_data->>'employee_number', substr(md5(random()::text), 1, 6));
       insert into public.employees (company_id, membership_id, employee_number, full_name, job_title, department, start_date)
-      values (v_company_id, v_membership_id, v_employee_num, v_full_name, new.raw_user_meta_data->>'job_title', new.raw_user_meta_data->>'department', current_date)
+      values (
+        v_invitation.company_id,
+        v_membership_id,
+        v_employee_num,
+        v_full_name,
+        new.raw_user_meta_data->>'job_title',
+        new.raw_user_meta_data->>'department',
+        current_date
+      )
       on conflict (company_id, employee_number) do update set membership_id = v_membership_id;
+
+      -- Mark invitation as used
+      update public.invitations
+      set used_at = now(),
+          used_by = new.id
+      where id = v_invitation.id;
     end if;
   end if;
 
@@ -603,8 +730,11 @@ for each row execute function public.handle_new_user();
 -- 8. ROW LEVEL SECURITY (RLS) POLICIES
 
 alter table public.profiles            enable row level security;
+alter table public.bookkeeping_firms   enable row level security;
+alter table public.firm_memberships    enable row level security;
 alter table public.companies           enable row level security;
 alter table public.memberships         enable row level security;
+alter table public.invitations         enable row level security;
 alter table public.employees           enable row level security;
 alter table public.payroll_periods     enable row level security;
 alter table public.payslips            enable row level security;
@@ -635,6 +765,38 @@ create policy "profiles_update_self" on public.profiles for update to authentica
   using (id = (select auth.uid()))
   with check (id = (select auth.uid()));
 
+-- Bookkeeping Firms Policies
+drop policy if exists "firms_select_members" on public.bookkeeping_firms;
+create policy "firms_select_members" on public.bookkeeping_firms for select to authenticated
+  using (app.is_firm_bookkeeper(id));
+
+-- Firm Memberships Policies
+drop policy if exists "firm_memberships_select" on public.firm_memberships;
+create policy "firm_memberships_select" on public.firm_memberships for select to authenticated
+  using (profile_id = (select auth.uid()) or app.is_firm_bookkeeper(firm_id));
+
+-- Companies (Client Businesses) Policies
+drop policy if exists "companies_select_accessible" on public.companies;
+create policy "companies_select_accessible" on public.companies for select to authenticated
+  using (
+    app.is_firm_bookkeeper(firm_id) or
+    app.has_role(id, array['employee','manager']::app_role[])
+  );
+
+drop policy if exists "companies_select_invited" on public.companies;
+create policy "companies_select_invited" on public.companies for select to anon, authenticated
+  using (exists (
+    select 1 from public.invitations i
+    where i.company_id = companies.id
+      and i.used_at is null
+      and i.expires_at > now()
+  ));
+
+drop policy if exists "companies_write_bookkeeper" on public.companies;
+create policy "companies_write_bookkeeper" on public.companies for all to authenticated
+  using (app.is_firm_bookkeeper(firm_id))
+  with check (app.is_firm_bookkeeper(firm_id));
+
 -- Memberships Policies
 drop policy if exists "memberships_select_own" on public.memberships;
 create policy "memberships_select_own" on public.memberships for select to authenticated
@@ -651,10 +813,22 @@ create policy "memberships_write_by_bookkeeper" on public.memberships
   using (app.has_role(company_id, array['bookkeeper']::app_role[]))
   with check (app.has_role(company_id, array['bookkeeper']::app_role[]));
 
--- Companies Policies
-drop policy if exists "companies_select_members" on public.companies;
-create policy "companies_select_members" on public.companies for select to authenticated
-  using (app.has_role(id, array['employee','manager','bookkeeper']::app_role[]));
+-- Invitations Policies
+drop policy if exists "invitations_select_bookkeeper" on public.invitations;
+create policy "invitations_select_bookkeeper" on public.invitations
+  for select to authenticated
+  using (app.has_role(company_id, array['bookkeeper']::app_role[]));
+
+drop policy if exists "invitations_select_active_token" on public.invitations;
+create policy "invitations_select_active_token" on public.invitations
+  for select to anon, authenticated
+  using (used_at is null and expires_at > now());
+
+drop policy if exists "invitations_write_bookkeeper" on public.invitations;
+create policy "invitations_write_bookkeeper" on public.invitations
+  for all to authenticated
+  using (app.has_role(company_id, array['bookkeeper']::app_role[]))
+  with check (app.has_role(company_id, array['bookkeeper']::app_role[]));
 
 -- Employees Policies
 drop policy if exists "employees_select_self" on public.employees;
